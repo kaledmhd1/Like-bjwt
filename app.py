@@ -2,8 +2,10 @@ from flask import Flask, request, jsonify
 import httpx
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
+executor = ThreadPoolExecutor(max_workers=40)  # الحد الأقصى 40 مهمة متزامنة
 
 def Encrypt_ID(x):
     x = int(x)
@@ -39,15 +41,14 @@ def Encrypt_ID(x):
                 strn = str(int(n))
                 m = (n - int(strn)) * 128
                 return dec[int(m)] + dec[int(n)] + dec[int(z)] + dec[int(y)] + xxx[int(x)]
-            else:
-                strx = int(x)
-                y = (x - int(strx)) * 128
-                stry = str(int(y))
-                z = (y - int(stry)) * 128
-                strz = str(int(z))
-                n = (z - int(strz)) * 128
-                strn = str(int(n))
-                return dec[int(n)] + dec[int(z)] + dec[int(y)] + xxx[int(x)]
+    strx = int(x)
+    y = (x - int(strx)) * 128
+    stry = str(int(y))
+    z = (y - int(stry)) * 128
+    strz = str(int(z))
+    n = (z - int(strz)) * 128
+    strn = str(int(n))
+    return dec[int(n)] + dec[int(z)] + dec[int(y)] + xxx[int(x)]
 
 def encrypt_api(plain_text):
     plain_text = bytes.fromhex(plain_text)
@@ -74,17 +75,14 @@ def handle_like(uid, token):
             'ReleaseVersion': 'OB50',
             'Content-Type': 'application/x-www-form-urlencoded',
         }
-
         with httpx.Client(verify=False) as client:
             response = client.post(url, headers=headers, data=TARGET)
-
         if response.status_code == 200:
             print(f"[{uid}] ✅ LIKE SENT SUCCESSFULLY")
             return True
         else:
             print(f"[{uid}] ❌ LIKE FAILED - Status {response.status_code}")
             return False
-
     except Exception as e:
         print(f"[{uid}] ❌ ERROR:", str(e))
         return False
@@ -102,9 +100,9 @@ def send_like():
     except ValueError:
         return jsonify({"error": "uid must be an integer"}), 400
 
-    success = handle_like(uid, token)
-
-    return jsonify({"status": "success" if success else "failed"})
+    future = executor.submit(handle_like, uid, token)
+    result = future.result()
+    return jsonify({"status": "success" if result else "failed"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
