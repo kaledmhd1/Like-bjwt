@@ -70,22 +70,21 @@ def like_task(player_id, token):
 
 @app.route("/send_like", methods=["GET"])
 def send_like():
-    player_id = request.args.get("player_id")
+    uid = request.args.get("uid")
     token = request.args.get("token")
 
-    if not player_id or not token:
+    if not uid or not token:
         return jsonify({"status": "failed"}), 200
 
     try:
-        player_id = int(player_id)
+        uid = int(uid)
     except ValueError:
         return jsonify({"status": "failed"}), 200
 
     # تنفذ المهمة عبر ThreadPoolExecutor
-    future = executor.submit(like_task, player_id, token)
+    future = executor.submit(like_task, uid, token)
     success = future.result()  # تنتظر انتهاء المهمة ثم ترجع النتيجة
 
     return jsonify({"status": "success" if success else "failed"}), 200
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
