@@ -8,7 +8,7 @@ import threading
 app = Flask(__name__)
 
 # ThreadPool مع 40 بوابة متوازية
-executor = ThreadPoolExecutor(max_workers=30)
+executor = ThreadPoolExecutor(max_workers=100)
 
 def Encrypt_ID(x):
     x = int(x)
