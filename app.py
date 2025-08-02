@@ -7,8 +7,7 @@ import time
 
 app = Flask(__name__)
 
-# Rate limit config
-RATE_LIMIT = 100  # عدد الطلبات المسموح بها
+RATE_LIMIT = 100  # الحد الأقصى للطلبات في الثانية
 lock = threading.Lock()
 request_timestamps = []
 
@@ -62,15 +61,11 @@ def process_like(player_id, token):
     with httpx.Client(verify=False) as client:
         response = client.post(url, headers=headers, data=TARGET)
 
-    if response.status_code == 200:
-        return {"status": "success", "message": f"[{player_id}] LIKE SENT ✅"}
-    else:
-        return {"status": "failed", "message": f"Request failed with status {response.status_code}"}
+    return response.status_code == 200
 
 def rate_limiter():
     with lock:
         now = time.time()
-        # حذف الطلبات الأقدم من ثانية
         while request_timestamps and now - request_timestamps[0] > 1:
             request_timestamps.pop(0)
 
@@ -86,22 +81,21 @@ def send_like():
     token = request.args.get("token")
 
     if not player_id or not token:
-        return jsonify({"error": "player_id and token are required in query params"}), 400
+        return jsonify({"status": "failed"}), 200
 
     try:
         player_id = int(player_id)
     except ValueError:
-        return jsonify({"error": "player_id must be an integer"}), 400
+        return jsonify({"status": "failed"}), 200
 
-    # تحقق من الحد المسموح به للطلبات
     if not rate_limiter():
-        return jsonify({"status": "error", "message": "Too many requests. Please try again later."}), 429
+        return jsonify({"status": "failed"}), 200
 
     try:
-        result = process_like(player_id, token)
-        return jsonify(result), 200 if result["status"] == "success" else 500
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        success = process_like(player_id, token)
+        return jsonify({"status": "success" if success else "failed"}), 200
+    except Exception:
+        return jsonify({"status": "failed"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
