@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from werkzeug.middleware.proxy_fix import ProxyFix
 import httpx
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
@@ -6,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app)
 
-# ThreadPool مع 40 بوابة متوازية
 executor = ThreadPoolExecutor(max_workers=100)
 
 def Encrypt_ID(x):
@@ -81,11 +82,11 @@ def send_like():
     except ValueError:
         return jsonify({"status": "failed"}), 200
 
-    # تنفذ المهمة عبر ThreadPoolExecutor
     future = executor.submit(like_task, player_id, token)
-    success = future.result()  # تنتظر انتهاء المهمة ثم ترجع النتيجة
+    success = future.result()
 
     return jsonify({"status": "success" if success else "failed"}), 200
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+# هذا هو handler الذي تستخدمه Vercel
+def handler(environ, start_response):
+    return app(environ, start_response)
