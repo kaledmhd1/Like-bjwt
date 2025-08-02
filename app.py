@@ -5,7 +5,7 @@ from Crypto.Util.Padding import pad
 from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=100)  # الحد الأقصى 40 مهمة متزامنة
+executor = ThreadPoolExecutor(max_workers=30)  # الحد الأقصى 40 مهمة متزامنة
 
 def Encrypt_ID(x):
     x = int(x)
