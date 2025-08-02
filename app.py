@@ -2,14 +2,13 @@ from flask import Flask, request, jsonify
 import httpx
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from concurrent.futures import ThreadPoolExecutor
 import threading
-import time
 
 app = Flask(__name__)
 
-RATE_LIMIT = 100  # الحد الأقصى للطلبات في الثانية
-lock = threading.Lock()
-request_timestamps = []
+# ThreadPool مع 40 بوابة متوازية
+executor = ThreadPoolExecutor(max_workers=40)
 
 def Encrypt_ID(x):
     x = int(x)
@@ -63,17 +62,11 @@ def process_like(player_id, token):
 
     return response.status_code == 200
 
-def rate_limiter():
-    with lock:
-        now = time.time()
-        while request_timestamps and now - request_timestamps[0] > 1:
-            request_timestamps.pop(0)
-
-        if len(request_timestamps) < RATE_LIMIT:
-            request_timestamps.append(now)
-            return True
-        else:
-            return False
+def like_task(player_id, token):
+    try:
+        return process_like(player_id, token)
+    except Exception:
+        return False
 
 @app.route("/send_like", methods=["GET"])
 def send_like():
@@ -88,14 +81,11 @@ def send_like():
     except ValueError:
         return jsonify({"status": "failed"}), 200
 
-    if not rate_limiter():
-        return jsonify({"status": "failed"}), 200
+    # تنفذ المهمة عبر ThreadPoolExecutor
+    future = executor.submit(like_task, player_id, token)
+    success = future.result()  # تنتظر انتهاء المهمة ثم ترجع النتيجة
 
-    try:
-        success = process_like(player_id, token)
-        return jsonify({"status": "success" if success else "failed"}), 200
-    except Exception:
-        return jsonify({"status": "failed"}), 200
+    return jsonify({"status": "success" if success else "failed"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
