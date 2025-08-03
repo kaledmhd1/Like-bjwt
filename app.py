@@ -94,16 +94,16 @@ def handle_like(uid, token):
 
 @app.route("/send_like", methods=["GET"])
 def send_like():
-    uid = request.args.get("uid")
+    uid = request.args.get("id")   # ⬅️ هنا غيرنا من uid إلى id
     token = request.args.get("token")
 
     if not uid or not token:
-        return jsonify({"error": "uid and token are required"}), 400
+        return jsonify({"error": "id and token are required"}), 400
 
     try:
         uid = int(uid)
     except ValueError:
-        return jsonify({"error": "uid must be an integer"}), 400
+        return jsonify({"error": "id must be an integer"}), 400
 
     future = executor.submit(handle_like, uid, token)
     result = future.result()
@@ -115,7 +115,7 @@ def send_like():
     }
 
     return jsonify({
-        "uid": uid,
+        "id": uid,
         "stats": stats,
         "details": result
     })
