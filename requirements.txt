@@ -1,4 +1,6 @@
-flask
+Flask
 httpx
 pycryptodome
+nest_asyncio
+uvicorn
 gunicorn
