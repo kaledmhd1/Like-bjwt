@@ -94,7 +94,7 @@ def handle_like(uid, token):
 
 @app.route("/send_like", methods=["GET"])
 def send_like():
-    uid = request.args.get("id")   # ⬅️ هنا غيرنا من uid إلى id
+    uid = request.args.get("id")
     token = request.args.get("token")
 
     if not uid or not token:
@@ -120,6 +120,33 @@ def send_like():
         "details": result
     })
 
+@app.route("/send_likes_batch", methods=["POST"])
+def send_likes_batch():
+    data = request.json
+    if not data or "accounts" not in data:
+        return jsonify({"error": "accounts list is required"}), 400
+
+    accounts = data["accounts"]  # قائمة من dicts مثل [{"id":..., "token":...}, ...]
+
+    futures = []
+    results = []
+
+    for acc in accounts:
+        uid = acc.get("id")
+        token = acc.get("token")
+        if not uid or not token:
+            continue
+        try:
+            uid_int = int(uid)
+        except ValueError:
+            continue
+        futures.append(executor.submit(handle_like, uid_int, token))
+
+    for future in futures:
+        result = future.result()
+        results.append(result)
+
+    return jsonify({"results": results})
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
