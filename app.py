@@ -2,110 +2,64 @@ from flask import Flask, request, jsonify
 import httpx
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from concurrent.futures import ThreadPoolExecutor
+import json
+import base64
 
 app = Flask(__name__)
+executor = ThreadPoolExecutor(max_workers=40)
 
 def Encrypt_ID(x):
     x = int(x)
-    dec = [...]  # نفس محتوى dec
-    xxx = [...]  # نفس محتوى xxx
-    x = x / 128
-    if x > 128:
-        x = x / 128
-        if x > 128:
-            x = x / 128
-            if x > 128:
-                x = x / 128
-                strx = int(x)
-                y = (x - int(strx)) * 128
-                stry = str(int(y))
-                z = (y - int(stry)) * 128
-                strz = str(int(z))
-                n = (z - int(strz)) * 128
-                strn = str(int(n))
-                m = (n - int(strn)) * 128
-                return dec[int(m)] + dec[int(n)] + dec[int(z)] + dec[int(y)] + xxx[int(x)]
-    strx = int(x)
-    y = (x - int(strx)) * 128
-    stry = str(int(y))
-    z = (y - int(stry)) * 128
-    strz = str(int(z))
-    n = (z - int(strz)) * 128
-    strn = str(int(n))
-    return dec[int(n)] + dec[int(z)] + dec[int(y)] + xxx[int(x)]
+    dec = ['80', '81', '82', '83', '84', '85', '86', '87', '88', '89', '8a', '8b', '8c', '8d', '8e', '8f']
+    hex_str = hex(x)[2:]
+    hex_str = hex_str.zfill(16)
+    encrypted = ''.join(dec[int(c, 16)] for c in hex_str)
+    return encrypted
 
-def encrypt_api(plain_text):
-    plain_text = bytes.fromhex(plain_text)
-    key = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
-    iv = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77, 37])
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
-    return cipher_text.hex()
-
-def handle_like(uid, token):
+def GET_PAYLOAD_BY_DATA(jwt_token):
     try:
-        encrypted_id = Encrypt_ID(uid)
-        encrypted_api = encrypt_api(f"08{encrypted_id}1007")
-        TARGET = bytes.fromhex(encrypted_api)
-
-        url = "https://clientbp.ggblueshark.com/LikeProfile"
-        headers = {
-            'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 9; ASUS_Z01QD Build/PI)',
-            'Connection': 'Keep-Alive',
-            'Expect': '100-continue',
-            'Authorization': f'Bearer {token}',
-            'X-Unity-Version': '2018.4.11f1',
-            'X-GA': 'v1 1',
-            'ReleaseVersion': 'OB50',
-            'Content-Type': 'application/x-www-form-urlencoded',
-        }
-
-        with httpx.Client(verify=False, timeout=10) as client:
-            response = client.post(url, headers=headers, data=TARGET)
-
-        if response.status_code == 200:
-            return {"status": "success"}
-        elif response.status_code == 500 and "daily" in response.text.lower():
-            return {"status": "daily_limit"}
-        else:
-            return {"status": "failed", "reason": response.text}
+        payload_part = jwt_token.split('.')[1]
+        payload_part += '=' * (-len(payload_part) % 4)  # Padding for base64
+        decoded_bytes = base64.urlsafe_b64decode(payload_part)
+        payload = json.loads(decoded_bytes)
+        return payload
     except Exception as e:
-        return {"status": "error", "reason": str(e)}
+        return {}
 
-@app.route("/send_like", methods=["GET"])
-def send_like():
-    uid = request.args.get("uid")
-    token = request.args.get("token")
-
-    if not uid or not token:
-        return jsonify({"error": "uid and token are required in query params"}), 400
-
+def send_like(token, uid):
     try:
-        uid = int(uid)
-    except ValueError:
-        return jsonify({"error": "uid must be an integer"}), 400
+        payload = GET_PAYLOAD_BY_DATA(token)
+        encrypted_uid = Encrypt_ID(uid)
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"https://like-api-bngxa.onrender.com/like?id={encrypted_uid}"
+        res = httpx.get(url, headers=headers, timeout=10)
 
-    result = handle_like(uid, token)
+        if res.status_code == 200:
+            return {"token_id": payload.get("account_id"), "nickname": payload.get("nickname"), "status": "success", "target_uid": uid}
+        elif res.status_code == 400:
+            try:
+                detail = res.json().get("detail", "").lower()
+                if "limit" in detail or "like" in detail or "daily" in detail:
+                    print(f"✅ الحساب {payload.get('nickname')} (ID: {payload.get('account_id')}) وصل الحد اليومي عند محاولة لايك لـ UID {uid}")
+                    return {"token_id": payload.get("account_id"), "nickname": payload.get("nickname"), "status": "limit_reached", "target_uid": uid}
+            except:
+                pass
+        return {"token_id": payload.get("account_id"), "nickname": payload.get("nickname"), "status": "failed", "target_uid": uid}
+    except Exception as e:
+        return {"token_id": None, "nickname": None, "status": "error", "target_uid": uid}
 
-    if result["status"] == "success":
-        return jsonify({
-            "success": 1,
-            "daily_limit": 0,
-            "daily_limit_uids": []
-        }), 200
-    elif result["status"] == "daily_limit":
-        return jsonify({
-            "success": 0,
-            "daily_limit": 1,
-            "daily_limit_uids": [uid]
-        }), 200
-    else:
-        return jsonify({
-            "success": 0,
-            "daily_limit": 0,
-            "daily_limit_uids": [],
-            "error": result.get("reason", "Unknown error")
-        }), 400
+@app.route('/send_like')
+def handle_like():
+    token = request.args.get('token')
+    uid = request.args.get('id')
+    if not token or not uid:
+        return jsonify({"error": "Missing token or id"}), 400
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    future = executor.submit(send_like, token, uid)
+    result = future.result()
+
+    return jsonify(result)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
