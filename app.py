@@ -1,11 +1,10 @@
 from flask import Flask, request, jsonify
 import httpx
+import asyncio
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=40)  # دعم حتى 40 عملية متزامنة
 
 def Encrypt_ID(x):
     x = int(x)
@@ -58,7 +57,7 @@ def encrypt_api(plain_text):
     cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
     return cipher_text.hex()
 
-def handle_like(uid, token):
+async def handle_like(uid, token):
     try:
         encrypted_id = Encrypt_ID(uid)
         encrypted_api = encrypt_api(f"08{encrypted_id}1007")
@@ -75,14 +74,17 @@ def handle_like(uid, token):
             'ReleaseVersion': 'OB50',
             'Content-Type': 'application/x-www-form-urlencoded',
         }
-        with httpx.Client(verify=False) as client:
-            response = client.post(url, headers=headers, data=TARGET)
+
+        async with httpx.AsyncClient(verify=False) as client:
+            response = await client.post(url, headers=headers, content=TARGET)
         if response.status_code == 200:
-            print(f"[{uid}] ✅ LIKE SENT SUCCESSFULLY")
+            return "success"
+        elif "daily_limited_reached" in response.text:
+            return "daily_limited_reached"
         else:
-            print(f"[{uid}] ❌ LIKE FAILED - Status {response.status_code}")
+            return f"other_error: {response.status_code}"
     except Exception as e:
-        print(f"[{uid}] ❌ ERROR:", str(e))
+        return f"exception: {str(e)}"
 
 @app.route("/send_like", methods=["GET"])
 def send_like():
@@ -97,12 +99,21 @@ def send_like():
     except ValueError:
         return jsonify({"error": "uid must be an integer"}), 400
 
-    # تنفيذ المهمة في خيط ضمن 40 متاحين
-    executor.submit(handle_like, uid, token)
-    return jsonify({
-        "status": "processing",
-        "message": f"Like request for UID {uid} is being processed"
-    }), 202
+    async def process():
+        result = await handle_like(uid, token)
+        stats = {
+            "success": 1 if result == "success" else 0,
+            "daily_limited_reached": 1 if result == "daily_limited_reached" else 0,
+            "other": result if result not in ["success", "daily_limited_reached"] else None
+        }
+        return stats
+
+    stats = asyncio.run(process())
+    return jsonify(stats), 200
 
 if __name__ == "__main__":
+    import os
+    os.environ["PYTHONASYNCIODEBUG"] = "1"
+    import nest_asyncio
+    nest_asyncio.apply()
     app.run(host="0.0.0.0", port=5000)
