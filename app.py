@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 import httpx
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 executor = ThreadPoolExecutor(max_workers=40)
@@ -126,7 +126,7 @@ def send_likes_batch():
     if not data or "accounts" not in data:
         return jsonify({"error": "accounts list is required"}), 400
 
-    accounts = data["accounts"]  # قائمة من dicts مثل [{"id":..., "token":...}, ...]
+    accounts = data["accounts"]
 
     futures = []
     results = []
@@ -142,9 +142,14 @@ def send_likes_batch():
             continue
         futures.append(executor.submit(handle_like, uid_int, token))
 
-    for future in futures:
-        result = future.result()
-        results.append(result)
+    from concurrent.futures import as_completed
+
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+            results.append(result)
+        except Exception as e:
+            results.append({"status": "error", "error": str(e)})
 
     return jsonify({"results": results})
 
