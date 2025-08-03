@@ -2,10 +2,8 @@ from flask import Flask, request, jsonify
 import httpx
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=30)  # الحد الأقصى 40 مهمة متزامنة
 
 def Encrypt_ID(x):
     x = int(x)
@@ -100,8 +98,9 @@ def send_like():
     except ValueError:
         return jsonify({"error": "uid must be an integer"}), 400
 
-    future = executor.submit(handle_like, uid, token)
-    result = future.result()
+    # تنفيذ دالة اللايك بشكل متزامن (مباشر)
+    result = handle_like(uid, token)
+
     return jsonify({"status": "success" if result else "failed"})
 
 if __name__ == "__main__":
