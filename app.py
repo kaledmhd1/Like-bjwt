@@ -1,11 +1,10 @@
-from flask import Flask, request, jsonify
+from quart import Quart, request, jsonify
+import asyncio
 import httpx
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=40)
+app = Quart(__name__)
 
 def Encrypt_ID(x):
     x = int(x)
@@ -58,7 +57,7 @@ def encrypt_api(plain_text):
     cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
     return cipher_text.hex()
 
-def handle_like(uid, token):
+async def async_handle_like(uid, token):
     try:
         encrypted_id = Encrypt_ID(uid)
         encrypted_api = encrypt_api(f"08{encrypted_id}1007")
@@ -76,8 +75,8 @@ def handle_like(uid, token):
             'Content-Type': 'application/x-www-form-urlencoded',
         }
 
-        with httpx.Client(verify=False) as client:
-            response = client.post(url, headers=headers, data=TARGET)
+        async with httpx.AsyncClient(verify=False, timeout=10) as client:
+            response = await client.post(url, headers=headers, content=TARGET)
 
         if response.status_code == 200:
             result_text = response.text.lower()
@@ -92,8 +91,31 @@ def handle_like(uid, token):
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+@app.route("/send_likes_batch", methods=["POST"])
+async def send_likes_batch():
+    data = await request.get_json()
+    if not data or "accounts" not in data:
+        return jsonify({"error": "accounts list is required"}), 400
+
+    accounts = data["accounts"]
+    tasks = []
+
+    for acc in accounts:
+        uid = acc.get("id")
+        token = acc.get("token")
+        if not uid or not token:
+            continue
+        try:
+            uid_int = int(uid)
+        except ValueError:
+            continue
+        tasks.append(async_handle_like(uid_int, token))
+
+    results = await asyncio.gather(*tasks)
+    return jsonify({"results": results})
+
 @app.route("/send_like", methods=["GET"])
-def send_like():
+async def send_like():
     uid = request.args.get("id")
     token = request.args.get("token")
 
@@ -105,8 +127,7 @@ def send_like():
     except ValueError:
         return jsonify({"error": "id must be an integer"}), 400
 
-    future = executor.submit(handle_like, uid, token)
-    result = future.result()
+    result = await async_handle_like(uid, token)
 
     stats = {
         "success": 1 if result["status"] == "success" else 0,
@@ -120,38 +141,6 @@ def send_like():
         "details": result
     })
 
-@app.route("/send_likes_batch", methods=["POST"])
-def send_likes_batch():
-    data = request.json
-    if not data or "accounts" not in data:
-        return jsonify({"error": "accounts list is required"}), 400
-
-    accounts = data["accounts"]
-
-    futures = []
-    results = []
-
-    for acc in accounts:
-        uid = acc.get("id")
-        token = acc.get("token")
-        if not uid or not token:
-            continue
-        try:
-            uid_int = int(uid)
-        except ValueError:
-            continue
-        futures.append(executor.submit(handle_like, uid_int, token))
-
-    from concurrent.futures import as_completed
-
-    for future in as_completed(futures):
-        try:
-            result = future.result()
-            results.append(result)
-        except Exception as e:
-            results.append({"status": "error", "error": str(e)})
-
-    return jsonify({"results": results})
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)
