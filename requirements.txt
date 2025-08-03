@@ -4,3 +4,4 @@ pycryptodome
 nest_asyncio
 uvicorn
 gunicorn
+quart
