@@ -5,3 +5,6 @@ nest_asyncio
 uvicorn
 gunicorn
 quart
+httpx
+pycryptodome
+hypercorn
