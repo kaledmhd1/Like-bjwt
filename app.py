@@ -5,7 +5,7 @@ from Crypto.Util.Padding import pad
 from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=40)
+executor = ThreadPoolExecutor(max_workers=100)
 
 def Encrypt_ID(x):
     x = int(x)
