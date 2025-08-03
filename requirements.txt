@@ -1,10 +1,7 @@
-Flask
 httpx
+quart
 pycryptodome
 nest_asyncio
 uvicorn
 gunicorn
-quart
-httpx
-pycryptodome
 hypercorn
