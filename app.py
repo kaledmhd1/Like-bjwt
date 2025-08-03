@@ -1,10 +1,11 @@
 from flask import Flask, request, jsonify
 import httpx
-import asyncio
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
+executor = ThreadPoolExecutor(max_workers=40)
 
 def Encrypt_ID(x):
     x = int(x)
@@ -57,7 +58,7 @@ def encrypt_api(plain_text):
     cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
     return cipher_text.hex()
 
-async def handle_like(uid, token):
+def handle_like(uid, token):
     try:
         encrypted_id = Encrypt_ID(uid)
         encrypted_api = encrypt_api(f"08{encrypted_id}1007")
@@ -75,16 +76,21 @@ async def handle_like(uid, token):
             'Content-Type': 'application/x-www-form-urlencoded',
         }
 
-        async with httpx.AsyncClient(verify=False) as client:
-            response = await client.post(url, headers=headers, content=TARGET)
+        with httpx.Client(verify=False) as client:
+            response = client.post(url, headers=headers, data=TARGET)
+
         if response.status_code == 200:
-            return "success"
-        elif "daily_limited_reached" in response.text:
-            return "daily_limited_reached"
+            result_text = response.text.lower()
+            if "daily_limited_reached" in result_text:
+                return {"status": "daily_limited_reached"}
+            elif "success" in result_text or '"result":0' in result_text:
+                return {"status": "success"}
+            else:
+                return {"status": "unknown", "response": result_text}
         else:
-            return f"other_error: {response.status_code}"
+            return {"status": "http_error", "code": response.status_code}
     except Exception as e:
-        return f"exception: {str(e)}"
+        return {"status": "error", "error": str(e)}
 
 @app.route("/send_like", methods=["GET"])
 def send_like():
@@ -92,28 +98,27 @@ def send_like():
     token = request.args.get("token")
 
     if not uid or not token:
-        return jsonify({"error": "uid and token are required in query params"}), 400
+        return jsonify({"error": "uid and token are required"}), 400
 
     try:
         uid = int(uid)
     except ValueError:
         return jsonify({"error": "uid must be an integer"}), 400
 
-    async def process():
-        result = await handle_like(uid, token)
-        stats = {
-            "success": 1 if result == "success" else 0,
-            "daily_limited_reached": 1 if result == "daily_limited_reached" else 0,
-            "other": result if result not in ["success", "daily_limited_reached"] else None
-        }
-        return stats
+    future = executor.submit(handle_like, uid, token)
+    result = future.result()
 
-    stats = asyncio.run(process())
-    return jsonify(stats), 200
+    stats = {
+        "success": 1 if result["status"] == "success" else 0,
+        "daily_limited_reached": 1 if result["status"] == "daily_limited_reached" else 0,
+        "error": 1 if result["status"] not in ["success", "daily_limited_reached"] else 0
+    }
+
+    return jsonify({
+        "uid": uid,
+        "stats": stats,
+        "details": result
+    })
 
 if __name__ == "__main__":
-    import os
-    os.environ["PYTHONASYNCIODEBUG"] = "1"
-    import nest_asyncio
-    nest_asyncio.apply()
     app.run(host="0.0.0.0", port=5000)
