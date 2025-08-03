@@ -58,9 +58,9 @@ def encrypt_api(plain_text):
     cipher_text = cipher.encrypt(pad(plain_text, AES.block_size))
     return cipher_text.hex()
 
-def handle_like(id, token):
+def handle_like(uid, token):
     try:
-        encrypted_id = Encrypt_ID(id)
+        encrypted_id = Encrypt_ID(uid)
         encrypted_api = encrypt_api(f"08{encrypted_id}1007")
         TARGET = bytes.fromhex(encrypted_api)
 
@@ -77,31 +77,38 @@ def handle_like(id, token):
         }
         with httpx.Client(verify=False) as client:
             response = client.post(url, headers=headers, data=TARGET)
+
         if response.status_code == 200:
-            print(f"[{id}] ✅ LIKE SENT SUCCESSFULLY")
+            text = response.text.lower()
+            if "daily limit" in text or "limit reached" in text:
+                return {"uid": uid, "status": "limit_reached", "message": "Reached daily limit."}
+            else:
+                return {"uid": uid, "status": "success", "message": "Like sent successfully."}
         else:
-            print(f"[{id}] ❌ LIKE FAILED - Status {response.status_code}")
+            return {"uid": uid, "status": "failed", "message": f"Failed with status {response.status_code}."}
+
     except Exception as e:
-        print(f"[{id}] ❌ ERROR:", str(e))
+        return {"uid": uid, "status": "error", "message": str(e)}
 
 @app.route("/send_like", methods=["GET"])
 def send_like():
-    id = request.args.get("id")
+    uid = request.args.get("uid")
     token = request.args.get("token")
 
-    if not id or not token:
-        return jsonify({"error": "id and token are required in query params"}), 400
+    if not uid or not token:
+        return jsonify({"error": "uid and token are required in query params"}), 400
 
     try:
-        id = int(id)
+        uid = int(uid)
     except ValueError:
-        return jsonify({"error": "id must be an integer"}), 400
+        return jsonify({"error": "uid must be an integer"}), 400
 
-    executor.submit(handle_like, id, token)
-    return jsonify({
-        "status": "processing",
-        "message": f"Like request for ID {id} is being processed"
-    }), 202
+    future = executor.submit(handle_like, uid, token)
+    try:
+        result = future.result(timeout=20)  # مهلة 20 ثانية
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"uid": uid, "status": "error", "message": f"Timeout or internal error: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
