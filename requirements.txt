@@ -1,7 +1,8 @@
 httpx
 quart
+hypercorn
 pycryptodome
 nest_asyncio
 uvicorn
 gunicorn
-hypercorn
+
