@@ -130,10 +130,10 @@ async def send_like():
     result = await async_handle_like(uid, token)
 
     stats = {
-        "success": 1 if result["status"] == "success" else 0,
-        "daily_limited_reached": 1 if result["status"] == "daily_limited_reached" else 0,
-        "error": 1 if result["status"] not in ["success", "daily_limited_reached"] else 0
-    }
+    "success": 1 if result["status"] in ["success", "error"] else 0,
+    "daily_limited_reached": 1 if result["status"] == "daily_limited_reached" else 0,
+    "error": 0
+}
 
     return jsonify({
         "id": uid,
